@@ -1,544 +1,649 @@
-/*
-* MultiSelect v0.9.12
-* Copyright (c) 2012 Louis Cuny
-*
-* This program is free software. It comes without any warranty, to
-* the extent permitted by applicable law. You can redistribute it
-* and/or modify it under the terms of the Do What The Fuck You Want
-* To Public License, Version 2, as published by Sam Hocevar. See
-* http://sam.zoy.org/wtfpl/COPYING for more details.
-*/
+
 
 !function ($) {
 
-  "use strict";
+    "use strict";
 
 
- /* MULTISELECT CLASS DEFINITION
-  * ====================== */
+    class MultiSelect {
 
-  var MultiSelect = function (element, options) {
-    this.options = options;
-    this.$element = $(element);
-    this.$container = $('<div/>', { 'class': "ms-container" });
-    this.$selectableContainer = $('<div/>', { 'class': 'ms-selectable' });
-    this.$selectionContainer = $('<div/>', { 'class': 'ms-selection' });
-    this.$selectableUl = $('<ul/>', { 'class': "ms-list", 'tabindex' : '-1' });
-    this.$selectionUl = $('<ul/>', { 'class': "ms-list", 'tabindex' : '-1' });
-    this.scrollTo = 0;
-    this.elemsSelector = 'li:visible:not(.ms-optgroup-label,.ms-optgroup-container,.'+options.disabledClass+')';
-  };
+        constructor(select, options) {
+            this.$originalSelect = $(select);
+            this.options = options;
 
-  MultiSelect.prototype = {
-    constructor: MultiSelect,
+            this.$newSelect = $('<div/>', {'class': "new_select"});
+            this.$selectableContainer = $('<div/>', {'class': 'SELECT-selectable'});
+            this.$selectionContainer = $('<div/>', {'class': 'SELECT-selection'});
+            this.$selectableUl = $('<ul/>', {'class': "SELECT-list", 'tabindex': '-1'});
+            this.$selectionUl = $('<ul/>', {'class': "SELECT-list", 'tabindex': '-1'});
+            this.scrollTo = 0;
+            this.elemsSelector = 'li:visible:not(.SELECT-optgroup-label,.SELECT-optgroup-container,.' + options.disabledClass + ')';
 
-    init: function(){
-      var that = this,
-          ms = this.$element;
-
-      if (ms.next('.ms-container').length === 0){
-        ms.css({ position: 'absolute', left: '-9999px' });
-        ms.attr('id', ms.attr('id') ? ms.attr('id') : Math.ceil(Math.random()*1000)+'multiselect');
-        this.$container.attr('id', 'ms-'+ms.attr('id'));
-        this.$container.addClass(that.options.cssClass);
-        ms.find('option').each(function(){
-          that.generateLisFromOption(this);
-        });
-
-        this.$selectionUl.find('.ms-optgroup-label').hide();
-
-        if (that.options.selectableHeader){
-          that.$selectableContainer.append(that.options.selectableHeader);
-        }
-        that.$selectableContainer.append(that.$selectableUl);
-        if (that.options.selectableFooter){
-          that.$selectableContainer.append(that.options.selectableFooter);
         }
 
-        if (that.options.selectionHeader){
-          that.$selectionContainer.append(that.options.selectionHeader);
+        //core de start
+        init() {
+            if (this.$originalSelect.next('.new_select').length === 0) { // is new select
+                this.create_new_select();
+                this.activeEvent();
+            }
+            // les options qui select ou start   
+            var selectedValues = this.$originalSelect.find('option:selected').map(function () {
+                return $(this).val();
+            }).get();
+            this.marginItem(selectedValues);
+            this.afterInit();
         }
-        that.$selectionContainer.append(that.$selectionUl);
-        if (that.options.selectionFooter){
-          that.$selectionContainer.append(that.options.selectionFooter);
-        }
 
-        that.$container.append(that.$selectableContainer);
-        that.$container.append(that.$selectionContainer);
-        ms.after(that.$container);
+        create_new_select() {
 
-        that.activeMouse(that.$selectableUl);
-        that.activeKeyboard(that.$selectableUl);
+            // cache elment select original   
+            //SELECT.css({position: 'absolute', top: '10px'});
 
-        var action = that.options.dblClick ? 'dblclick' : 'click';
+            // copier les attribus de select original a select new 
+            // attr id 
+            if (this.$originalSelect.attr('id') == undefined) {
+                this.$originalSelect.attr('id', Math.ceil(Math.random() * 1000) + '_ID_Random')
+            }
+            // copier ID original plus prefix newSelect et jouter class si il y a en options
+            this.$newSelect.attr('id', 'newSelect-' + this.$originalSelect.attr('id'))
+                    .addClass(this.options.cssClass);
 
-        that.$selectableUl.on(action, '.ms-elem-selectable', function(){
-          that.select($(this).data('ms-value'));
-        });
-        that.$selectionUl.on(action, '.ms-elem-selection', function(){
-          that.deselect($(this).data('ms-value'));
-        });
+            // generateLisFromOption par les optino de select
+            this.$originalSelect.find('option').each((index, option) => {
+                // copier les options de selectOriginale et coller dans
+                //  block selectableLi,selectedLi avec hide() block selectedLi
 
-        that.activeMouse(that.$selectionUl);
-        that.activeKeyboard(that.$selectionUl);
+                this.generateLisFromOption(option);  // option de select  initiale de select 
 
-        ms.on('focus', function(){
-          that.$selectableUl.focus();
-        });
-      }
-
-      var selectedValues = ms.find('option:selected').map(function(){ return $(this).val(); }).get();
-      that.select(selectedValues, 'init');
-
-      if (typeof that.options.afterInit === 'function') {
-        that.options.afterInit.call(this, this.$container);
-      }
-    },
-
-    'generateLisFromOption' : function(option, index, $container){
-      var that = this,
-          ms = that.$element,
-          attributes = "",
-          $option = $(option);
-
-      for (var cpt = 0; cpt < option.attributes.length; cpt++){
-        var attr = option.attributes[cpt];
-
-        if(attr.name !== 'value' && attr.name !== 'disabled'){
-          attributes += attr.name+'="'+attr.value+'" ';
-        }
-      }
-      var selectableLi = $('<li '+attributes+'><span>'+that.escapeHTML($option.text())+'</span></li>'),
-          selectedLi = selectableLi.clone(),
-          value = $option.val(),
-          elementId = that.sanitize(value);
-
-      selectableLi
-        .data('ms-value', value)
-        .addClass('ms-elem-selectable')
-        .attr('id', elementId+'-selectable');
-
-      selectedLi
-        .data('ms-value', value)
-        .addClass('ms-elem-selection')
-        .attr('id', elementId+'-selection')
-        .hide();
-
-      if ($option.prop('disabled') || ms.prop('disabled')){
-        selectedLi.addClass(that.options.disabledClass);
-        selectableLi.addClass(that.options.disabledClass);
-      }
-
-      var $optgroup = $option.parent('optgroup');
-
-      if ($optgroup.length > 0){
-        var optgroupLabel = $optgroup.attr('label'),
-            optgroupId = that.sanitize(optgroupLabel),
-            $selectableOptgroup = that.$selectableUl.find('#optgroup-selectable-'+optgroupId),
-            $selectionOptgroup = that.$selectionUl.find('#optgroup-selection-'+optgroupId);
-
-        if ($selectableOptgroup.length === 0){
-          var optgroupContainerTpl = '<li class="ms-optgroup-container"></li>',
-              optgroupTpl = '<ul class="ms-optgroup"><li class="ms-optgroup-label"><span>'+optgroupLabel+'</span></li></ul>';
-
-          $selectableOptgroup = $(optgroupContainerTpl);
-          $selectionOptgroup = $(optgroupContainerTpl);
-          $selectableOptgroup.attr('id', 'optgroup-selectable-'+optgroupId);
-          $selectionOptgroup.attr('id', 'optgroup-selection-'+optgroupId);
-          $selectableOptgroup.append($(optgroupTpl));
-          $selectionOptgroup.append($(optgroupTpl));
-          if (that.options.selectableOptgroup){
-            $selectableOptgroup.find('.ms-optgroup-label').on('click', function(){
-              var values = $optgroup.children(':not(:selected, :disabled)').map(function(){ return $(this).val();}).get();
-              that.select(values);
             });
-            $selectionOptgroup.find('.ms-optgroup-label').on('click', function(){
-              var values = $optgroup.children(':selected:not(:disabled)').map(function(){ return $(this).val();}).get();
-              that.deselect(values);
+
+            this.$selectionUl.find('.SELECT-optgroup-label').hide();
+
+            //generateHeaderContainerFooter
+            this.generateHeaderContainerFooter();
+
+
+            // ajouter newselect en HTML apres original select
+            this.$originalSelect.after(this.$newSelect);
+
+        }
+
+                generateLisFromOption(option, index, $newSelect) {
+                    // copier les options de selectOriginale et coller dans
+                    //  block selectableLi,selectedLi avec hide() block selectedLi
+
+
+
+                    let attributes = "", $option = $(option);
+
+                    // copier des attribute de original a newselect  <option style="color:red" ...>elem 1</option>
+                    let attr = option.attributes;
+                    for (let i = 0; i < attr.length; i++) {
+                        if (attr[i].name !== 'value' && attr[i].name !== 'disabled') {
+                            attributes += attr[i].name + '="' + attr[i].value + '" ';
+                        }
+                    }
+                    // copier text et value de option
+                    let text = $option.text();
+                    let value = $option.val();
+
+                    // crier deux bloc selectableLi et selectedLi avec element {li span}
+                    let selectableLi = $('<li ' + attributes + '><span>' + this.escapeHTML(text) + '</span></li>');
+                    let selectedLi = selectableLi.clone();
+
+                    // creier de id par value (nombr)
+                    let elementId = this.sanitize(value);
+
+
+
+                    selectableLi
+                            .data('SELECT-value', value)            //insert data jquery pour event click
+                            .addClass('SELECT-elem-selectable')     // insert class de style css externt
+                            .attr('id', elementId + '-selectable'); // insert id 
+
+                    selectedLi
+                            .data('SELECT-value', value)            //insert data jquery pour event click
+                            .addClass('SELECT-elem-selection')      // insert class de style css externt
+                            .attr('id', elementId + '-selection')   // insert id
+                            .hide();                                // caher element li
+
+
+                    // s il y a attr disabled dans $originalSelect ou $option
+                    if ($option.prop('disabled') || this.$originalSelect.prop('disabled')) {
+                        selectedLi.addClass(this.options.disabledClass);
+                        selectableLi.addClass(this.options.disabledClass);
+                    }
+
+
+                    // index de li pour ajouter en block
+                    if (index === undefined) {
+                        index = this.$selectableUl.children().length
+                    }
+
+
+                    //ajouter des li on block selectableLi,selectedLi
+                    selectableLi.insertAt(index, this.$selectableUl);
+                    selectedLi.insertAt(index, this.$selectionUl);
+
+                }
+
+                generateHeaderContainerFooter() {
+                    if (this.options.selectableHeader) {
+                        this.$selectableContainer.append(this.options.selectableHeader);
+                    }
+                    this.$selectableContainer.append(this.$selectableUl);
+                    if (this.options.selectableFooter) {
+                        this.$selectableContainer.append(this.options.selectableFooter);
+                    }
+
+                    if (this.options.selectionHeader) {
+                        this.$selectionContainer.append(this.options.selectionHeader);
+                    }
+                    this.$selectionContainer.append(this.$selectionUl);
+
+                    if (this.options.selectionFooter) {
+                        this.$selectionContainer.append(this.options.selectionFooter);
+                    }
+
+                    this.$newSelect.append(this.$selectableContainer);
+                    this.$newSelect.append(this.$selectionContainer);
+                }
+
+        //event list
+
+        activeEvent() {
+            this.activeMouse();
+            this.activeKeyboard();
+            this.activeClick();
+            this.activeFocus();
+
+
+        }
+                //  call function select() or deselect()
+                activeClick() {
+                    var $_this = this;
+                    var action = this.options.dblClick ? 'dblclick' : 'click';
+
+                    this.$selectableUl.on(action, '.SELECT-elem-selectable', function () {
+                        $_this.select($(this).data('SELECT-value'));
+                    });
+                    this.$selectionUl.on(action, '.SELECT-elem-selection', function () {
+                        $_this.deselect($(this).data('SELECT-value'));
+                    });
+
+                }
+                // add class css SELECT-hover par mouse move
+                activeMouse() {
+                    var elemsSelector = this.elemsSelector;
+
+                    this.$newSelect.on('mouseenter', elemsSelector, function () {
+                        $(this).parents('.new_select').find(elemsSelector).removeClass('SELECT-hover');
+                        $(this).addClass('SELECT-hover');
+                    });
+
+                    this.$newSelect.on('mouseleave', elemsSelector, function () {
+                        $(this).parents('.new_select').find(elemsSelector).removeClass('SELECT-hover');
+                    });
+                }
+                //change focus originalselect a new
+                 activeFocus() {
+                    var $_this = this;
+                    this.$originalSelect.on('focus', function () {
+                        $_this.$selectableUl.focus();
+                    });
+                }
+                activeKeyboard() {
+                    var $_this = this;
+
+                    this.$selectionUl.on('focus', function () {
+                        $(this).addClass('SELECT-focus');
+                    })
+                            .on('blur', function () {
+                                $(this).removeClass('SELECT-focus');
+                            })
+                            .on('keydown', function (e) {
+                                switch (e.which) {
+                                    case 40:
+                                    case 38:
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        $_this.moveHighlight($(this), (e.which === 38) ? -1 : 1);
+                                        return;
+                                    case 37:
+                                    case 39:
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        $_this.switchList($_this.$selectionUl);
+                                        return;
+                                    case 9:
+                                        if ($_this.$originalSelect.is('[tabindex]')) {
+                                            e.preventDefault();
+                                            var tabindex = parseInt($_this.$originalSelect.attr('tabindex'), 10);
+                                            tabindex = (e.shiftKey) ? tabindex - 1 : tabindex + 1;
+                                            $('[tabindex="' + (tabindex) + '"]').focus();
+                                            return;
+                                        } else {
+                                            if (e.shiftKey) {
+                                                $_this.$originalSelect.trigger('focus');
+                                            }
+                                        }
+                                }
+                                if ($.inArray(e.which, $_this.options.keySelect) > -1) {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    $_this.selectHighlighted($_this.$selectionUl);
+                                    return;
+                                }
+                            });
+
+                    this.$selectableUl.on('focus', function () {
+                        $(this).addClass('SELECT-focus');
+                    })
+                            .on('blur', function () {
+                                $(this).removeClass('SELECT-focus');
+                            })
+                            .on('keydown', function (e) {
+                                switch (e.which) {
+                                    case 40:
+                                    case 38:
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        $_this.moveHighlight($(this), (e.which === 38) ? -1 : 1);
+                                        return;
+                                    case 37:
+                                    case 39:
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        $_this.switchList($_this.$selectableUl);
+                                        return;
+                                    case 9:
+                                        if ($_this.$originalSelect.is('[tabindex]')) {
+                                            e.preventDefault();
+                                            var tabindex = parseInt($_this.$originalSelect.attr('tabindex'), 10);
+                                            tabindex = (e.shiftKey) ? tabindex - 1 : tabindex + 1;
+                                            $('[tabindex="' + (tabindex) + '"]').focus();
+                                            return;
+                                        } else {
+                                            if (e.shiftKey) {
+                                                $_this.$originalSelect.trigger('focus');
+                                            }
+                                        }
+                                }
+                                if ($.inArray(e.which, $_this.options.keySelect) > -1) {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    $_this.selectHighlighted($_this.$selectableUl);
+                                    return;
+                                }
+                            });
+                }
+                            moveHighlight($list, direction) {
+            var $elems = $list.find(this.elemsSelector),
+                    $currElem = $elems.filter('.SELECT-hover'),
+                    $nextElem = null,
+                    elemHeight = $elems.first().outerHeight(),
+                    containerHeight = $list.height(),
+                    containerSelector = '#' + this.$newSelect.prop('id');
+
+            $elems.removeClass('SELECT-hover');
+            if (direction === 1) { // DOWN
+
+                $nextElem = $currElem.nextAll(this.elemsSelector).first();
+                if ($nextElem.length === 0) {
+                    var $optgroupUl = $currElem.parent();
+
+                    if ($optgroupUl.hasClass('SELECT-optgroup')) {
+                        var $optgroupLi = $optgroupUl.parent(),
+                                $nextOptgroupLi = $optgroupLi.next(':visible');
+
+                        if ($nextOptgroupLi.length > 0) {
+                            $nextElem = $nextOptgroupLi.find(this.elemsSelector).first();
+                        } else {
+                            $nextElem = $elems.first();
+                        }
+                    } else {
+                        $nextElem = $elems.first();
+                    }
+                }
+            } else if (direction === -1) { // UP
+
+                $nextElem = $currElem.prevAll(this.elemsSelector).first();
+                if ($nextElem.length === 0) {
+                    var $optgroupUl = $currElem.parent();
+
+                    if ($optgroupUl.hasClass('SELECT-optgroup')) {
+                        var $optgroupLi = $optgroupUl.parent(),
+                                $prevOptgroupLi = $optgroupLi.prev(':visible');
+
+                        if ($prevOptgroupLi.length > 0) {
+                            $nextElem = $prevOptgroupLi.find(this.elemsSelector).last();
+                        } else {
+                            $nextElem = $elems.last();
+                        }
+                    } else {
+                        $nextElem = $elems.last();
+                    }
+                }
+            }
+            if ($nextElem.length > 0) {
+                $nextElem.addClass('SELECT-hover');
+                var scrollTo = $list.scrollTop() + $nextElem.position().top -
+                        containerHeight / 2 + elemHeight / 2;
+
+                $list.scrollTop(scrollTo);
+            }
+        }
+
+                            selectHighlighted($list) {
+                                var $elems = $list.find(this.elemsSelector),
+                                        $highlightedElem = $elems.filter('.SELECT-hover').first();
+
+                                if ($highlightedElem.length > 0) {
+                                    if ($list.parent().hasClass('SELECT-selectable')) {
+                                        this.select($highlightedElem.data('SELECT-value'));
+                                    } else {
+                                        this.deselect($highlightedElem.data('SELECT-value'));
+                                    }
+                                    $elems.removeClass('SELECT-hover');
+                                }
+                            }
+
+                            switchList($list) {
+                                $list.blur();
+                                this.$newSelect.find(this.elemsSelector).removeClass('SELECT-hover');
+                                if ($list.parent().hasClass('SELECT-selectable')) {
+                                    this.$selectionUl.focus();
+                                } else {
+                                    this.$selectableUl.focus();
+                                }
+                            }
+               
+
+        //select et deselect dans newSelect
+        marginItem(value) {
+        
+ 
+           let selectables  = this.object_item(value).selectables;
+           let selections   = this.object_item(value).selections;
+ 
+ 
+            if (selectables.length > 0) {
+
+                selectables.addClass('OPTION-selected')
+                        .hide();
+
+                selections.addClass('OPTION-selected')
+                        .show();
+
+                this.object_item(value).options.prop('selected', true);  // active selected original select
+
+
+
+            }
+        }
+
+        // navigation  entre deux block         
+
+        select(value) {
+
+           
+           let selectables  = this.object_item(value).selectables;
+           let selections   = this.object_item(value).selections;
+
+
+
+            if (selectables.length > 0) {
+
+                selectables.addClass('OPTION-selected')
+                        .hide(1000);
+
+                selections.addClass('OPTION-selected')
+                        .show(1000);
+
+                this.object_item(value).options.prop('selected', true);  // active selected original select
+
+                // effacer class css SELECT-hover de cursur chaque changement
+                this.$newSelect.find(this.elemsSelector).removeClass('SELECT-hover');
+
+
+
+
+                if (this.options.keepOrder) { // order de position des item( asec or none)
+                    var selectionLiLast = this.$selectionUl.find('.OPTION-selected');  //les elements non hide =>show
+                    if ((selectionLiLast.length > 1) && (selectionLiLast.last().get(0) != selections.get(0))) {
+                        selections.insertAfter(selectionLiLast.last());
+                    }
+                }
+
+
+                this.$originalSelect.trigger('change');  // start onchange de element original
+                this.afterSelect(value);
+
+            }
+        }
+
+        deselect(value) {
+
+           
+           let selectables  = this.object_item(value).selectables;
+           let selections   = this.object_item(value).selections.filter('.OPTION-selected');
+           
+           
+           
+            if (selections.length > 0) {
+                selectables.
+                        removeClass('OPTION-selected').
+                        show(1000);
+                selections.
+                        removeClass('OPTION-selected').
+                        hide(1000);
+                this.object_item(value).options.prop('selected', false);  // disactive selected original select
+
+                this.$newSelect.find(this.elemsSelector).removeClass('SELECT-hover');
+
+
+                this.$originalSelect.trigger('change');
+                this.afterDeselect(value);
+            }
+        }
+        
+        
+
+        addOption(options) {
+            var $_this = this;
+
+            if (options.value !== undefined && options.value !== null) {
+                options = [options];
+            }
+            $.each(options, function (index, option) {
+                if (option.value !== undefined && option.value !== null &&
+                        $_this.$originalSelect.find("option[value='" + option.value + "']").length === 0) {
+                    var $option = $('<option value="' + option.value + '">' + option.text + '</option>'),
+                            $newSelect = option.nested === undefined ? $_this.$originalSelect : $("optgroup[label='" + option.nested + "']"),
+                            index = parseInt((typeof option.index === 'undefined' ? $newSelect.children().length : option.index));
+
+                    if (option.optionClass) {
+                        $option.addClass(option.optionClass);
+                    }
+
+                    if (option.disabled) {
+                        $option.prop('disabled', true);
+                    }
+
+                    $option.insertAt(index, $newSelect);
+                    $_this.generateLisFromOption($option.get(0), index, option.nested);
+                }
             });
-          }
-          that.$selectableUl.append($selectableOptgroup);
-          that.$selectionUl.append($selectionOptgroup);
         }
-        index = index === undefined ? $selectableOptgroup.find('ul').children().length : index + 1;
-        selectableLi.insertAt(index, $selectableOptgroup.children());
-        selectedLi.insertAt(index, $selectionOptgroup.children());
-      } else {
-        index = index === undefined ? that.$selectableUl.children().length : index;
 
-        selectableLi.insertAt(index, that.$selectableUl);
-        selectedLi.insertAt(index, that.$selectionUl);
-      }
-    },
 
-    'addOption' : function(options){
-      var that = this;
 
-      if (options.value !== undefined && options.value !== null){
-        options = [options];
-      } 
-      $.each(options, function(index, option){
-        if (option.value !== undefined && option.value !== null &&
-            that.$element.find("option[value='"+option.value+"']").length === 0){
-          var $option = $('<option value="'+option.value+'">'+option.text+'</option>'),
-              $container = option.nested === undefined ? that.$element : $("optgroup[label='"+option.nested+"']"),
-              index = parseInt((typeof option.index === 'undefined' ? $container.children().length : option.index));
-
-          if (option.optionClass) {
-            $option.addClass(option.optionClass);
-          }
-
-          if (option.disabled) {
-            $option.prop('disabled', true);
-          }
-
-          $option.insertAt(index, $container);
-          that.generateLisFromOption($option.get(0), index, option.nested);
+        refresh() {
+            this.destroy();
+            this.$originalSelect.multiSelect(this.options);
         }
-      });
-    },
 
-    'escapeHTML' : function(text){
-      return $("<div>").text(text).html();
-    },
+        destroy() {
+            $("#SELECT-" + this.$originalSelect.attr("id")).remove();
+            this.$originalSelect.off('focus');
+            this.$originalSelect.css('position', '').css('left', '');
+            this.$originalSelect.removeData('multiselect');
+        }
 
-    'activeKeyboard' : function($list){
-      var that = this;
+        select_all() {
+            var SELECT = this.$originalSelect,
+                    values = SELECT.val();
 
-      $list.on('focus', function(){
-        $(this).addClass('ms-focus');
-      })
-      .on('blur', function(){
-        $(this).removeClass('ms-focus');
-      })
-      .on('keydown', function(e){
-        switch (e.which) {
-          case 40:
-          case 38:
-            e.preventDefault();
-            e.stopPropagation();
-            that.moveHighlight($(this), (e.which === 38) ? -1 : 1);
-            return;
-          case 37:
-          case 39:
-            e.preventDefault();
-            e.stopPropagation();
-            that.switchList($list);
-            return;
-          case 9:
-            if(that.$element.is('[tabindex]')){
-              e.preventDefault();
-              var tabindex = parseInt(that.$element.attr('tabindex'), 10);
-              tabindex = (e.shiftKey) ? tabindex-1 : tabindex+1;
-              $('[tabindex="'+(tabindex)+'"]').focus();
-              return;
-            }else{
-              if(e.shiftKey){
-                that.$element.trigger('focus');
-              }
+            SELECT.find('option:not(":disabled")').prop('selected', true);
+            this.$selectableUl.find('.SELECT-elem-selectable').filter(':not(.' + this.options.disabledClass + ')').addClass('OPTION-selected').hide();
+            this.$selectionUl.find('.SELECT-optgroup-label').show();
+            this.$selectableUl.find('.SELECT-optgroup-label').hide();
+            this.$selectionUl.find('.SELECT-elem-selection').filter(':not(.' + this.options.disabledClass + ')').addClass('OPTION-selected').show();
+            this.$selectionUl.focus();
+            SELECT.trigger('change');
+            if (typeof this.options.afterSelect === 'function') {
+                var selectedValues = $.grep(SELECT.val(), function (item) {
+                    return $.inArray(item, values) < 0;
+                });
+                this.options.afterSelect.call(this, selectedValues);
             }
         }
-        if($.inArray(e.which, that.options.keySelect) > -1){
-          e.preventDefault();
-          e.stopPropagation();
-          that.selectHighlighted($list);
-          return;
+
+        deselect_all() {
+            var SELECT = this.$originalSelect,
+                    values = SELECT.val();
+
+            SELECT.find('option').prop('selected', false);
+            this.$selectableUl.find('.SELECT-elem-selectable').removeClass('OPTION-selected').show();
+            this.$selectionUl.find('.SELECT-optgroup-label').hide();
+            this.$selectableUl.find('.SELECT-optgroup-label').show();
+            this.$selectionUl.find('.SELECT-elem-selection').removeClass('OPTION-selected').hide();
+            this.$selectableUl.focus();
+            SELECT.trigger('change');
+            if (typeof this.options.afterDeselect === 'function') {
+                this.options.afterDeselect.call(this, values);
+            }
         }
-      });
-    },
 
-    'moveHighlight': function($list, direction){
-      var $elems = $list.find(this.elemsSelector),
-          $currElem = $elems.filter('.ms-hover'),
-          $nextElem = null,
-          elemHeight = $elems.first().outerHeight(),
-          containerHeight = $list.height(),
-          containerSelector = '#'+this.$container.prop('id');
+        //call function
+        afterInit() {
+            if (typeof this.options.afterInit === 'function') {
+                this.options.afterInit.call(this, this.$newSelect);
+            }
+        }
+        afterSelect(value) {
+            if (typeof this.options.afterSelect === 'function') {
+                this.options.afterSelect.call(this, value, this.$newSelect);
+            }
+        }
+        afterDeselect(value) {
+            if (typeof this.options.afterDeselect === 'function') {
+                this.options.afterDeselect.call(this, value, this.$newSelect);
+            }
+        }
+        //outils
+        sanitize(value) {
+            // string to nombre
+            var hash = 0, ascii;
+            if (value.length == 0)
+                return 0;
 
-      $elems.removeClass('ms-hover');
-      if (direction === 1){ // DOWN
+            for (var i = 0; i < value.length; i++) {
 
-        $nextElem = $currElem.nextAll(this.elemsSelector).first();
-        if ($nextElem.length === 0){
-          var $optgroupUl = $currElem.parent();
+                ascii = value.charCodeAt(i);
+                hash = ((hash << 5) - hash) + ascii;
+                hash |= 0; // Convert to 32bit integer
+            }
 
-          if ($optgroupUl.hasClass('ms-optgroup')){
-            var $optgroupLi = $optgroupUl.parent(),
-                $nextOptgroupLi = $optgroupLi.next(':visible');
+            return hash;
+        }
+        escapeHTML(text) { /// <h1>awa</h1> to &lt;h1&gt;awa&lt;/h1&gt;
+            return $("<div>").text(text).html();
+        }
+        sanitizeArry(value) {
+            return $.map(value, (val) => {
+                return(this.sanitize(val));
+            })
+        }
+        object_item(value) {
+            if (typeof value === 'string') {
+                value = [value]
+            }
+            //item select en original selectad
+            let       options = this.$originalSelect.find('option:not(:disabled)').filter(function () {
+                             return($.inArray(this.value, value) > -1);
+            });
 
-            if ($nextOptgroupLi.length > 0){
-              $nextElem = $nextOptgroupLi.find(this.elemsSelector).first();
+            // [text] to [nomber ] array + object query            
+            let       code = this.sanitizeArry(value);
+
+            // array to string avec sufix et prefix ,    methode join() 
+            let CssSelectable = '#' + code.join('-selectable, #') + '-selectable';
+            let CssSelection = '#' + code.join('-selection, #') + '-selection';
+            let   selectables = this.$selectableUl.find(CssSelectable);
+            let   selections = this.$selectionUl.find(CssSelection);
+            let disabled = this.options.disabledClass;
+            selectables  = selectables.filter(':not(.' + disabled + ')');
+            selections   = selections.filter(':not(.' + disabled + ')');
+            return {"selectables": selectables, "selections": selections, "options": options}
+        }
+
+       }
+
+
+    /* MULTISELECT PLUGIN DEFINITION
+     * ======================= */
+
+    $.fn.multiSelect = function (option, args) {
+
+
+        return this.each(function () {
+            var $this = $(this),
+                    options = $.extend(
+                            {},
+                            {
+                                keySelect: [32],
+                                selectableOptgroup: false,
+                                disabledClass: 'disabled',
+                                dblClick: false,
+                                keepOrder: true,
+                                cssClass: ''
+                            },
+                            $this.data(),
+                            typeof option === 'object' && option   //// console.log(false|true && 'wassim')
+                            ),
+                    OB_MultiSelect = $(this).data('multiselect');
+
+            if (!OB_MultiSelect) {
+                OB_MultiSelect = new MultiSelect(this, options)
+                $(this).data('multiselect', (OB_MultiSelect))
+            }
+
+            if (typeof option === 'string') {
+                OB_MultiSelect[option](args);
             } else {
-              $nextElem = $elems.first();
+                OB_MultiSelect.init();
             }
-          } else {
-            $nextElem = $elems.first();
-          }
-        }
-      } else if (direction === -1){ // UP
-
-        $nextElem = $currElem.prevAll(this.elemsSelector).first();
-        if ($nextElem.length === 0){
-          var $optgroupUl = $currElem.parent();
-
-          if ($optgroupUl.hasClass('ms-optgroup')){
-            var $optgroupLi = $optgroupUl.parent(),
-                $prevOptgroupLi = $optgroupLi.prev(':visible');
-
-            if ($prevOptgroupLi.length > 0){
-              $nextElem = $prevOptgroupLi.find(this.elemsSelector).last();
-            } else {
-              $nextElem = $elems.last();
-            }
-          } else {
-            $nextElem = $elems.last();
-          }
-        }
-      }
-      if ($nextElem.length > 0){
-        $nextElem.addClass('ms-hover');
-        var scrollTo = $list.scrollTop() + $nextElem.position().top - 
-                       containerHeight / 2 + elemHeight / 2;
-
-        $list.scrollTop(scrollTo);
-      }
-    },
-
-    'selectHighlighted' : function($list){
-      var $elems = $list.find(this.elemsSelector),
-          $highlightedElem = $elems.filter('.ms-hover').first();
-
-      if ($highlightedElem.length > 0){
-        if ($list.parent().hasClass('ms-selectable')){
-          this.select($highlightedElem.data('ms-value'));
-        } else {
-          this.deselect($highlightedElem.data('ms-value'));
-        }
-        $elems.removeClass('ms-hover');
-      }
-    },
-
-    'switchList' : function($list){
-      $list.blur();
-      this.$container.find(this.elemsSelector).removeClass('ms-hover');
-      if ($list.parent().hasClass('ms-selectable')){
-        this.$selectionUl.focus();
-      } else {
-        this.$selectableUl.focus();
-      }
-    },
-
-    'activeMouse' : function($list){
-      var that = this;
-
-      this.$container.on('mouseenter', that.elemsSelector, function(){
-        $(this).parents('.ms-container').find(that.elemsSelector).removeClass('ms-hover');
-        $(this).addClass('ms-hover');
-      });
-
-      this.$container.on('mouseleave', that.elemsSelector, function () {
-        $(this).parents('.ms-container').find(that.elemsSelector).removeClass('ms-hover');
-      });
-    },
-
-    'refresh' : function() {
-      this.destroy();
-      this.$element.multiSelect(this.options);
-    },
-
-    'destroy' : function(){
-      $("#ms-"+this.$element.attr("id")).remove();
-      this.$element.off('focus');
-      this.$element.css('position', '').css('left', '');
-      this.$element.removeData('multiselect');
-    },
-
-    'select' : function(value, method){
-      if (typeof value === 'string'){ value = [value]; }
-
-      var that = this,
-          ms = this.$element,
-          msIds = $.map(value, function(val){ return(that.sanitize(val)); }),
-          selectables = this.$selectableUl.find('#' + msIds.join('-selectable, #')+'-selectable').filter(':not(.'+that.options.disabledClass+')'),
-          selections = this.$selectionUl.find('#' + msIds.join('-selection, #') + '-selection').filter(':not(.'+that.options.disabledClass+')'),
-          options = ms.find('option:not(:disabled)').filter(function(){ return($.inArray(this.value, value) > -1); });
-
-      if (method === 'init'){
-        selectables = this.$selectableUl.find('#' + msIds.join('-selectable, #')+'-selectable'),
-        selections = this.$selectionUl.find('#' + msIds.join('-selection, #') + '-selection');
-      }
-
-      if (selectables.length > 0){
-        selectables.addClass('ms-selected').hide();
-        selections.addClass('ms-selected').show();
-
-        options.prop('selected', true);
-
-        that.$container.find(that.elemsSelector).removeClass('ms-hover');
-
-        var selectableOptgroups = that.$selectableUl.children('.ms-optgroup-container');
-        if (selectableOptgroups.length > 0){
-          selectableOptgroups.each(function(){
-            var selectablesLi = $(this).find('.ms-elem-selectable');
-            if (selectablesLi.length === selectablesLi.filter('.ms-selected').length){
-              $(this).find('.ms-optgroup-label').hide();
-            }
-          });
-
-          var selectionOptgroups = that.$selectionUl.children('.ms-optgroup-container');
-          selectionOptgroups.each(function(){
-            var selectionsLi = $(this).find('.ms-elem-selection');
-            if (selectionsLi.filter('.ms-selected').length > 0){
-              $(this).find('.ms-optgroup-label').show();
-            }
-          });
-        } else {
-          if (that.options.keepOrder && method !== 'init'){
-            var selectionLiLast = that.$selectionUl.find('.ms-selected');
-            if((selectionLiLast.length > 1) && (selectionLiLast.last().get(0) != selections.get(0))) {
-              selections.insertAfter(selectionLiLast.last());
-            }
-          }
-        }
-        if (method !== 'init'){
-          ms.trigger('change');
-          if (typeof that.options.afterSelect === 'function') {
-            that.options.afterSelect.call(this, value);
-          }
-        }
-      }
-    },
-
-    'deselect' : function(value){
-      if (typeof value === 'string'){ value = [value]; }
-
-      var that = this,
-          ms = this.$element,
-          msIds = $.map(value, function(val){ return(that.sanitize(val)); }),
-          selectables = this.$selectableUl.find('#' + msIds.join('-selectable, #')+'-selectable'),
-          selections = this.$selectionUl.find('#' + msIds.join('-selection, #')+'-selection').filter('.ms-selected').filter(':not(.'+that.options.disabledClass+')'),
-          options = ms.find('option').filter(function(){ return($.inArray(this.value, value) > -1); });
-
-      if (selections.length > 0){
-        selectables.removeClass('ms-selected').show();
-        selections.removeClass('ms-selected').hide();
-        options.prop('selected', false);
-
-        that.$container.find(that.elemsSelector).removeClass('ms-hover');
-
-        var selectableOptgroups = that.$selectableUl.children('.ms-optgroup-container');
-        if (selectableOptgroups.length > 0){
-          selectableOptgroups.each(function(){
-            var selectablesLi = $(this).find('.ms-elem-selectable');
-            if (selectablesLi.filter(':not(.ms-selected)').length > 0){
-              $(this).find('.ms-optgroup-label').show();
-            }
-          });
-
-          var selectionOptgroups = that.$selectionUl.children('.ms-optgroup-container');
-          selectionOptgroups.each(function(){
-            var selectionsLi = $(this).find('.ms-elem-selection');
-            if (selectionsLi.filter('.ms-selected').length === 0){
-              $(this).find('.ms-optgroup-label').hide();
-            }
-          });
-        }
-        ms.trigger('change');
-        if (typeof that.options.afterDeselect === 'function') {
-          that.options.afterDeselect.call(this, value);
-        }
-      }
-    },
-
-    'select_all' : function(){
-      var ms = this.$element,
-          values = ms.val();
-
-      ms.find('option:not(":disabled")').prop('selected', true);
-      this.$selectableUl.find('.ms-elem-selectable').filter(':not(.'+this.options.disabledClass+')').addClass('ms-selected').hide();
-      this.$selectionUl.find('.ms-optgroup-label').show();
-      this.$selectableUl.find('.ms-optgroup-label').hide();
-      this.$selectionUl.find('.ms-elem-selection').filter(':not(.'+this.options.disabledClass+')').addClass('ms-selected').show();
-      this.$selectionUl.focus();
-      ms.trigger('change');
-      if (typeof this.options.afterSelect === 'function') {
-        var selectedValues = $.grep(ms.val(), function(item){
-          return $.inArray(item, values) < 0;
         });
-        this.options.afterSelect.call(this, selectedValues);
-      }
-    },
+    };
 
-    'deselect_all' : function(){
-      var ms = this.$element,
-          values = ms.val();
 
-      ms.find('option').prop('selected', false);
-      this.$selectableUl.find('.ms-elem-selectable').removeClass('ms-selected').show();
-      this.$selectionUl.find('.ms-optgroup-label').hide();
-      this.$selectableUl.find('.ms-optgroup-label').show();
-      this.$selectionUl.find('.ms-elem-selection').removeClass('ms-selected').hide();
-      this.$selectableUl.focus();
-      ms.trigger('change');
-      if (typeof this.options.afterDeselect === 'function') {
-        this.options.afterDeselect.call(this, values);
-      }
-    },
 
-    sanitize: function(value){
-      var hash = 0, i, character;
-      if (value.length == 0) return hash;
-      var ls = 0;
-      for (i = 0, ls = value.length; i < ls; i++) {
-        character  = value.charCodeAt(i);
-        hash  = ((hash<<5)-hash)+character;
-        hash |= 0; // Convert to 32bit integer
-      }
-      return hash;
-    }
-  };
+    
 
-  /* MULTISELECT PLUGIN DEFINITION
-   * ======================= */
+    $.fn.insertAt = function (index, $parent) {
+        // ajouter des element option dans New select ul
+        return this.each(function () {
 
-  $.fn.multiSelect = function () {
-    var option = arguments[0],
-        args = arguments;
+            if (index === 0) {
 
-    return this.each(function () {
-      var $this = $(this),
-          data = $this.data('multiselect'),
-          options = $.extend({}, $.fn.multiSelect.defaults, $this.data(), typeof option === 'object' && option);
+                $parent.prepend(this);
+            } else {
 
-      if (!data){ $this.data('multiselect', (data = new MultiSelect(this, options))); }
-
-      if (typeof option === 'string'){
-        data[option](args[1]);
-      } else {
-        data.init();
-      }
-    });
-  };
-
-  $.fn.multiSelect.defaults = {
-    keySelect: [32],
-    selectableOptgroup: false,
-    disabledClass : 'disabled',
-    dblClick : false,
-    keepOrder: false,
-    cssClass: ''
-  };
-
-  $.fn.multiSelect.Constructor = MultiSelect;
-
-  $.fn.insertAt = function(index, $parent) {
-    return this.each(function() {
-      if (index === 0) {
-        $parent.prepend(this);
-      } else {
-        $parent.children().eq(index - 1).after(this);
-      }
-    });
-};
+                $parent.children().eq(index - 1).after(this);
+            }
+        });
+    };
 
 }(window.jQuery);
